@@ -25,8 +25,11 @@ node_groups = {node: [] for node in node_ids}
 for _, row in group_edges.iterrows():
     node_groups[row[0]].append(row[1])
 
+p = 0.001  # Return parameter
+q = 0.001  # In-out parameter
+
 # Generate Node2Vec embeddings
-node2vec = Node2Vec(G, dimensions=128, walk_length=80, num_walks=10)
+node2vec = Node2Vec(G, dimensions=128, walk_length=80, num_walks=10, p=p, q=q)
 model = node2vec.fit(window=10, min_count=1, workers=8)
 
 # Prepare data for multi-label classification
