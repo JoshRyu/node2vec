@@ -28,7 +28,7 @@ with open(labels_file, 'r') as f:
 
 # Node2Vec parameters
 p = 1.0  # Return parameter
-q = 0.001  # In-out parameter
+q = 1.0  # In-out parameter
 dimensions = 128  # Size of node embeddings
 num_walks = 20  # Number of walks per node
 walk_length = 5  # Length of each walk
@@ -41,39 +41,39 @@ model = node2vec.fit(window=10, min_count=1, workers=4)
 embeddings = {str(node): model.wv[str(node)] for node in G.nodes()}
 
 
-# Convert embeddings to DataFrame
-embedding_df = pd.DataFrame.from_dict(embeddings, orient='index')
+# # Convert embeddings to DataFrame
+# embedding_df = pd.DataFrame.from_dict(embeddings, orient='index')
 
-# Perform t-SNE for dimensionality reduction
-tsne = TSNE(n_components=2, random_state=42)
-embeddings_2d = tsne.fit_transform(embedding_df)
-
-
-label_encoder = LabelEncoder()
-numeric_labels = label_encoder.fit_transform(list(node_labels.values()))
-
-# Visualize the embeddings in 2D
-plt.figure(figsize=(10, 8))
-plt.scatter(embeddings_2d[:, 0], embeddings_2d[:, 1], c=numeric_labels, cmap='viridis')
-plt.title('Node2Vec Embeddings Visualization')
-plt.colorbar()
-plt.show()
+# # Perform t-SNE for dimensionality reduction
+# tsne = TSNE(n_components=2, random_state=42)
+# embeddings_2d = tsne.fit_transform(embedding_df)
 
 
-# # Prepare data for node classification
-# X = [embeddings[str(node)] for node in G.nodes()]
-# y = [node_labels[str(node)] for node in G.nodes()]
+# label_encoder = LabelEncoder()
+# numeric_labels = label_encoder.fit_transform(list(node_labels.values()))
 
-# # Split data into training and testing sets
-# X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+# # Visualize the embeddings in 2D
+# plt.figure(figsize=(10, 8))
+# plt.scatter(embeddings_2d[:, 0], embeddings_2d[:, 1], c=numeric_labels, cmap='viridis')
+# plt.title('Node2Vec Embeddings Visualization')
+# plt.colorbar()
+# plt.show()
 
-# # Train an SVM classifier
-# classifier = SVC(kernel='rbf')
-# classifier.fit(X_train, y_train)
 
-# # Make predictions on the test set
-# y_pred = classifier.predict(X_test)
+# Prepare data for node classification
+X = [embeddings[str(node)] for node in G.nodes()]
+y = [node_labels[str(node)] for node in G.nodes()]
 
-# # Evaluate the classifier
-# accuracy = accuracy_score(y_test, y_pred)
-# print(accuracy)
+# Split data into training and testing sets
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+
+# Train an SVM classifier
+classifier = SVC(kernel='rbf')
+classifier.fit(X_train, y_train)
+
+# Make predictions on the test set
+y_pred = classifier.predict(X_test)
+
+# Evaluate the classifier
+accuracy = accuracy_score(y_test, y_pred)
+print(accuracy)
