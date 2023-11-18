@@ -29,7 +29,7 @@ def run_node2vec(p,q):
     G = nx.from_scipy_sparse_matrix(network_matrix)
 
     # Generate node2vec embeddings
-    node2vec = Node2Vec(G, dimensions=64, walk_length=30, num_walks=200, workers=4, p=p, q=q)  # You can adjust parameters here
+    node2vec = Node2Vec(G, dimensions=128, walk_length=80, num_walks=10, p=p, q=q)
     model = node2vec.fit(window=10, min_count=1, batch_words=4)
 
     # Get node embeddings
