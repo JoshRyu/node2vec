@@ -81,7 +81,7 @@ class Node2Vec(BaseNodeEmbedder):
         w2vparams['workers'] = threads
         self.verbose = verbose
 
-    def fit(self, G, groups, p, q):
+    def fit(self, G, groups, p, q, mode):
         """
         NOTE: Currently only support str or int as node name for graph
         Parameters
@@ -94,16 +94,16 @@ class Node2Vec(BaseNodeEmbedder):
 
         # Replace Random Walk Process to "walker" package
         # Noraml Random Walk with Node2Vec parameters
-        self.walks = walker.random_walks(G, n_walks=self.epochs, walk_len=self.walklen, start_nodes=G.nodes(), p=p, q=q)
-        
-
-        # PageRank Random Walk with Node2Vec parameters
-        # walks1 = walker.random_walks(G, n_walks=self.epochs, walk_len=self.walklen, start_nodes=groups['A'], p=p, q=q)
-        # walks2 = walker.random_walks(G, n_walks=self.epochs + 20, walk_len=self.walklen, start_nodes=groups['B'], p=p, q=q)
-        # walks3 = walker.random_walks(G, n_walks=self.epochs + 50, walk_len=self.walklen, start_nodes=groups['C'], p=p, q=q)
-        # all_walks = [walks1, walks2, walks3]
-        
-        # self.walks = np.concatenate(all_walks)
+        print(f"########################{mode}")
+        if (mode.casefold() == 'base'):
+            self.walks = walker.random_walks(G, n_walks=self.epochs, walk_len=self.walklen, start_nodes=G.nodes(), p=p, q=q)
+        else: 
+            # PageRank Random Walk with Node2Vec parameters
+            walks1 = walker.random_walks(G, n_walks=self.epochs, walk_len=self.walklen, start_nodes=groups['A'], p=p, q=q)
+            walks2 = walker.random_walks(G, n_walks=self.epochs + 20, walk_len=self.walklen, start_nodes=groups['B'], p=p, q=q)
+            walks3 = walker.random_walks(G, n_walks=self.epochs + 50, walk_len=self.walklen, start_nodes=groups['C'], p=p, q=q)
+            all_walks = [walks1, walks2, walks3]
+            self.walks = np.concatenate(all_walks)
 
         if not isinstance(G, cg.csrgraph):
             G = cg.csrgraph(G, threads=self.threads)

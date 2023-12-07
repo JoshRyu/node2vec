@@ -7,7 +7,10 @@ from nodevectors.nodevectors import Node2Vec
 from torch_geometric.datasets import Planetoid
 from torch_geometric.utils.convert import to_networkx
 
+import argparse
+import numpy as np
 import textwrap
+
 
 # Divide nodes into groups based on PageRank levels
 def divide_nodes_by_rank(page_ranks):
@@ -20,7 +23,7 @@ def divide_nodes_by_rank(page_ranks):
     group_c = [node for node, _ in sorted_nodes[next_30_percent:int(total_nodes)+1]]
     return group_a, group_b, group_c
 
-def node_embedding(G, groups, p, q):
+def node_embedding(G, groups, p, q, mode):
     # Node2Vec parameters
     p = 1.0  # Return parameter
     q = 1.0  # In-out parameter
@@ -29,7 +32,7 @@ def node_embedding(G, groups, p, q):
     walk_length = 10  # Length of each walk
 
     node2vec_model = Node2Vec(n_components=dimensions, epochs=num_walks, walklen=walk_length)
-    node2vec_model.fit(G, groups, p, q)
+    node2vec_model.fit(G, groups, p, q, mode)
     embeddings = []
     for embedding in range(len(G)):
         embeddings.append(node2vec_model.predict(embedding))
@@ -50,51 +53,163 @@ def svm_prediction(embeddings, labels):
 
     return macro_f1, micro_f1, accuracy
 
-dataset = Planetoid(root='/tmp/Cora', name='Cora')
-data = dataset[0]
+def load_dataset(name):
+    name = name.casefold()
+    data = None
 
-G = to_networkx(data)
-node_labels_list = data.y.numpy()
+    if (name == 'cora'):
+        dataset = Planetoid(root='/tmp/Cora', name='Cora')
+        data = dataset[0]
+    
+    return data
 
-page_ranks = nx.pagerank(G, 0.8)
+def load_testcase(method):
+    method = method.casefold()
+    test_plans = []
 
-# Divide nodes into groups based on PageRank levels
-group_a, group_b, group_c = divide_nodes_by_rank(page_ranks)
+    if (method == 'deepwalk'):
+        test_plans = [{'p': 1, 'q': 1}]
 
-groups = {'A': group_a, 'B': group_b, 'C': group_c}
+    if (method == 'node2vec' or method == 'pagerank'):
+        test_plans = [{'p': .25, 'q': .25}, {'p': .25, 'q': .5}, {'p': .25, 'q': .75}]
+        # , {'p': .25, 'q': 1}, {'p': .25, 'q': 2}, {'p': .25, 'q': 4}, {'p': .5, 'q': .25}, {'p': .75, 'q': .25}, {'p': 1, 'q': .25}, {'p': 2, 'q': .25}, {'p': 4, 'q': .25}
+    
+    return test_plans
+
+def load_mode(method):
+    method = method.casefold()
+
+    if (method in ['deepwalk', 'node2vec']):
+        return 'base'
+    
+    else:
+        return 'pagerank'
+
+def find_maximum(groups):
+    max_macro_f1_index = max(range(len(groups)), key=lambda i: groups[i]['macro_f1_score'])
+    max_micro_f1_index = max(range(len(groups)), key=lambda i: groups[i]['micro_f1_score'])
+    max_accuracy_index = max(range(len(groups)), key=lambda i: groups[i]['accuracy'])
+
+    max_values = {
+        'macro_f1_score': {
+            'p': groups[max_macro_f1_index]['p'],
+            'q': groups[max_macro_f1_index]['q'],
+            'score': groups[max_macro_f1_index]['macro_f1_score']
+        },
+        'micro_f1_score': {
+            'p': groups[max_micro_f1_index]['p'],
+            'q': groups[max_micro_f1_index]['q'],
+            'score': groups[max_micro_f1_index]['micro_f1_score']
+        },
+        'accuracy': {
+            'p': groups[max_accuracy_index]['p'],
+            'q': groups[max_accuracy_index]['q'],
+            'score': groups[max_accuracy_index]['accuracy']
+        }
+    }
+
+    return max_values
 
 
-# node_class = {k: v for v, k in enumerate(node_labels_list)}
 
-test_plans = [{'p': .25, 'q': .25}, {'p': .25, 'q': .5}, {'p': .25, 'q': .75}, {'p': .25, 'q': 1}, {'p': .25, 'q': 2}, {'p': .25, 'q': 4}, {'p': .5, 'q': .25}, {'p': .75, 'q': .25}, {'p': 1, 'q': .25}, {'p': 2, 'q': .25}, {'p': 4, 'q': .25}]
-iter_level = 2
+def main(dataset, method, iteration, filename):
+    data = load_dataset(dataset)
 
-for index in range(len(test_plans)):
-    tmp_macro_f1_score = 0
-    tmp_micro_f1_score = 0
-    tmp_accuracy = 0
+    G = to_networkx(data)
+    node_labels_list = data.y.numpy()
 
-    with open("../results/pagerank2.md", "a") as file:
-        file.write(f'#####################################')
+    page_ranks = nx.pagerank(G, 0.8)
 
-    for iter in range(iter_level):
-        # Node2Vec embedding
-        embeddings = node_embedding(G, groups, test_plans[index]['p'], test_plans[index]['q'])
-        macro_f1, micro_f1, accuracy = svm_prediction(embeddings, node_labels_list)
-        
-        tmp_macro_f1_score += macro_f1
-        tmp_micro_f1_score += micro_f1
-        tmp_accuracy += accuracy
+    # Divide nodes into groups based on PageRank levels
+    group_a, group_b, group_c = divide_nodes_by_rank(page_ranks)
 
-        with open("../results/pagerank2.md", "a") as file:
-            test_result = f"< Trial #{iter} > \nMacro_F1 Score: {macro_f1}\nMicro_F1 Score: {micro_f1}\nAccuracy Score: {accuracy}\n"
-            file.write(f'\n{test_result}')
+    groups = {'A': group_a, 'B': group_b, 'C': group_c}
+
+    # node_class = {k: v for v, k in enumerate(node_labels_list)}
+
+    test_plans = load_testcase(method)
+    iter_level = int(iteration)
+    task_groups = []
+    average_groups = []
+
+    for index in range(len(test_plans)):
+        tmp_macro_f1_score = []
+        tmp_micro_f1_score = []
+        tmp_accuracy = []
+
+        with open(f"../results/{filename}.md", "a") as file:
+            file.write(f'#####################################')
+
+        for iter in range(iter_level):
+            # Node2Vec embedding
+            embeddings = node_embedding(G, groups, test_plans[index]['p'], test_plans[index]['q'], load_mode(method))
+            macro_f1, micro_f1, accuracy = svm_prediction(embeddings, node_labels_list)
+            
+            tmp_macro_f1_score.append(macro_f1)
+            tmp_micro_f1_score.append(micro_f1)
+            tmp_accuracy.append(accuracy)
+
+            task_groups.append({'macro_f1_score': macro_f1, 'micro_f1_score': micro_f1, 'accuracy': accuracy, 'p': test_plans[index]['p'], 'q': test_plans[index]['q']})
+
+            with open(f"../results/{filename}.md", "a") as file:
+                test_result = f"< Trial #{iter} > \nMacro_F1 Score: {macro_f1}\nMicro_F1 Score: {micro_f1}\nAccuracy Score: {accuracy}\n"
+                file.write(f'\n{test_result}')
 
 
-    with open("../results/pagerank2.md", "a") as file:
-        average_macro_score = tmp_macro_f1_score / iter_level
-        average_micro_score = tmp_micro_f1_score / iter_level
-        average_accuracy = tmp_accuracy / iter_level
+        with open(f"../results/{filename}.md", "a") as file:
+            # Mean
+            average_macro_score = np.mean(tmp_macro_f1_score)
+            average_micro_score = np.mean(tmp_micro_f1_score)
+            average_accuracy = np.mean(tmp_accuracy)
 
-        file.write(f"\n[ Average Score for Task P: {test_plans[index]['p']}, Q: {test_plans[index]['q']} ] \nMacro_F1 Score: {average_macro_score}\nMicro_F1 Score: {average_micro_score}\nAccuracy Score: {average_accuracy}\n#####################################\n\n")
-        file.close()
+            average_groups.append({'macro_f1_score': average_macro_score, 'micro_f1_score': average_micro_score, 'accuracy': average_accuracy, 'p': test_plans[index]['p'], 'q': test_plans[index]['q']})
+
+            # Variance
+            var_macro_score = np.var(tmp_macro_f1_score)
+            var_micro_score = np.var(tmp_micro_f1_score)
+            var_accuracy = np.var(tmp_accuracy)
+
+            # Standard Deviation
+            std_macro_score = np.std(tmp_macro_f1_score)
+            std_micro_score = np.std(tmp_micro_f1_score)
+            std_accuracy = np.std(tmp_accuracy)
+
+            file.write(f"\n[ Mean Score for Task P: {test_plans[index]['p']}, Q: {test_plans[index]['q']} ] \nMacro_F1 Score: {average_macro_score}\nMicro_F1 Score: {average_micro_score}\nAccuracy Score: {average_accuracy}\n")
+            file.write(f"\n[ Variance Score for Task P: {test_plans[index]['p']}, Q: {test_plans[index]['q']} ] \nMacro_F1 Score: {var_macro_score}\nMicro_F1 Score: {var_micro_score}\nAccuracy Score: {var_accuracy}\n")
+            file.write(f"\n[ Standard Deviation Score for Task P: {test_plans[index]['p']}, Q: {test_plans[index]['q']} ] \nMacro_F1 Score: {std_macro_score}\nMicro_F1 Score: {std_micro_score}\nAccuracy Score: {std_accuracy}\n#####################################\n\n")
+    
+    with open(f"../results/{filename}.md", "a") as file:
+        task_group_max = find_maximum(task_groups)
+        avg_group_max = find_maximum(average_groups)
+
+        max_text = f"""\n[ Task that achieves maximum score ]
+        Macro_F1 Score: {task_group_max['macro_f1_score']['score']}, p = {task_group_max['macro_f1_score']['p']}, q = {task_group_max['macro_f1_score']['q']}
+        Micro_F1 Score: {task_group_max['micro_f1_score']['score']}, p = {task_group_max['micro_f1_score']['p']}, q = {task_group_max['micro_f1_score']['q']}
+        Accuracy Score: {task_group_max['accuracy']['score']}, p = {task_group_max['accuracy']['p']}, q = {task_group_max['accuracy']['q']}\n\n"""
+
+        avg_max_text = f"""\n[ Average that achieves maximum score ]
+        Macro_F1 Score: {avg_group_max['macro_f1_score']['score']}, p = {avg_group_max['macro_f1_score']['p']}, q = {avg_group_max['macro_f1_score']['q']}
+        Micro_F1 Score: {avg_group_max['micro_f1_score']['score']}, p = {avg_group_max['micro_f1_score']['p']}, q = {avg_group_max['micro_f1_score']['q']}
+        Accuracy Score: {avg_group_max['accuracy']['score']}, p = {avg_group_max['accuracy']['p']}, q = {avg_group_max['accuracy']['q']}\n\n"""
+
+        # Remove leading spaces from text strings
+        max_text = '\n'.join([line.lstrip() for line in max_text.split('\n')])
+        avg_max_text = '\n'.join([line.lstrip() for line in avg_max_text.split('\n')])
+
+        file.write(max_text)
+        file.write(avg_max_text)
+
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description='Pagerank Node2Vec Script')
+    parser.add_argument('dataset', choices=['cora', 'citeseer'], help='Dataset name (Cora or CiteSeer)')
+    parser.add_argument('method', choices=['deepwalk', 'node2vec', 'pagerank'], help='Method name (DeepWalk or Node2Vec)')
+    parser.add_argument('iteration', type=int, help='Number of iterations')
+    parser.add_argument('filename', help='File for results in markdown format (without extension)')
+
+    args = parser.parse_args()
+
+    if args.filename.endswith('.md'):
+        parser.error("Filename should not include the .md extension")
+
+    main(args.dataset, args.method, args.iteration, args.filename)
