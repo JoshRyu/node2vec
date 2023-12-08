@@ -11,6 +11,7 @@ import argparse
 import numpy as np
 import textwrap
 import pandas as pd
+from datetime import datetime
 
 
 # Divide nodes into groups based on PageRank levels
@@ -69,7 +70,8 @@ def load_testcase(method):
         test_plans = [{'p': 1, 'q': 1}]
 
     if (method == 'node2vec' or method == 'pagerank'):
-        test_plans = [{'p': .25, 'q': .25}, {'p': .25, 'q': .5}, {'p': .25, 'q': .75}, {'p': .25, 'q': 1}, {'p': .25, 'q': 2}, {'p': .25, 'q': 4}, {'p': .5, 'q': .25}, {'p': .75, 'q': .25}, {'p': 1, 'q': .25}, {'p': 2, 'q': .25}, {'p': 4, 'q': .25}]
+        test_plans = [{'p': .25, 'q': .25}]
+        # , {'p': .25, 'q': .5}, {'p': .25, 'q': .75}, {'p': .25, 'q': 1}, {'p': .25, 'q': 2}, {'p': .25, 'q': 4}, {'p': .5, 'q': .25}, {'p': .75, 'q': .25}, {'p': 1, 'q': .25}, {'p': 2, 'q': .25}, {'p': 4, 'q': .25}
     
     return test_plans
 
@@ -116,6 +118,17 @@ def export_result_set(result_set, filepath, file_format='csv'):
     else:
         print("Unsupported file format. Please choose 'csv' or 'excel'.")
 
+def format_time(start_time, end_time):
+    time_difference = end_time - start_time
+    total_seconds = time_difference.total_seconds()
+    
+    hours = int(total_seconds // 3600)
+    minutes = int((total_seconds % 3600) // 60)
+    seconds = int(total_seconds % 60)
+    milliseconds = int((time_difference.microseconds / 1000) % 1000)  # Extract milliseconds
+    
+    return '{:02d}:{:02d}:{:02d}.{:03d}'.format(hours, minutes, seconds, milliseconds)
+    
 def main(dataset, method, iteration, filename):
     data = load_dataset(dataset)
 
@@ -145,7 +158,8 @@ def main(dataset, method, iteration, filename):
         'q': [],
         'macro_f1_score': [],
         'micro_f1_score': [],
-        'accuracy': []
+        'accuracy': [], 
+        'time_taken': []
     }
 
     # Node2Vec parameters
@@ -154,6 +168,7 @@ def main(dataset, method, iteration, filename):
     walk_length = 10  # Length of each walk
 
     for index in range(len(test_plans)):
+
         tmp_macro_f1_score = []
         tmp_micro_f1_score = []
         tmp_accuracy = []
@@ -163,9 +178,13 @@ def main(dataset, method, iteration, filename):
             file.write(f'\n[## {method} experiments starts ##]\n')
 
         for iter in range(iter_level):
+
+            start_time = datetime.now()
             # Node2Vec embedding
             embeddings = node_embedding(G, groups, test_plans[index]['p'], test_plans[index]['q'], load_mode(method), dimensions, num_walks, walk_length)
             macro_f1, micro_f1, accuracy = svm_prediction(embeddings, node_labels_list)
+
+            end_time = datetime.now()
             
             tmp_macro_f1_score.append(macro_f1)
             tmp_micro_f1_score.append(micro_f1)
@@ -183,7 +202,8 @@ def main(dataset, method, iteration, filename):
                 'q': test_plans[index]['q'],
                 'macro_f1_score': macro_f1,
                 'micro_f1_score': micro_f1,
-                'accuracy': accuracy
+                'accuracy': accuracy,
+                'time_taken': format_time(start_time, end_time)
             }
 
             for key, value in tmp_data.items():
