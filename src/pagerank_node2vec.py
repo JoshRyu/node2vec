@@ -10,6 +10,7 @@ from torch_geometric.utils.convert import to_networkx
 import argparse
 import numpy as np
 import textwrap
+import pandas as pd
 
 
 # Divide nodes into groups based on PageRank levels
@@ -23,14 +24,7 @@ def divide_nodes_by_rank(page_ranks):
     group_c = [node for node, _ in sorted_nodes[next_30_percent:int(total_nodes)+1]]
     return group_a, group_b, group_c
 
-def node_embedding(G, groups, p, q, mode):
-    # Node2Vec parameters
-    p = 1.0  # Return parameter
-    q = 1.0  # In-out parameter
-    dimensions = 256  # Size of node embeddings 성능올릴거면 256
-    num_walks = 10  # Number of walks per node
-    walk_length = 10  # Length of each walk
-
+def node_embedding(G, groups, p, q, mode, dimensions, num_walks, walk_length):
     node2vec_model = Node2Vec(n_components=dimensions, epochs=num_walks, walklen=walk_length)
     node2vec_model.fit(G, groups, p, q, mode)
     embeddings = []
@@ -60,6 +54,10 @@ def load_dataset(name):
     if (name == 'cora'):
         dataset = Planetoid(root='/tmp/Cora', name='Cora')
         data = dataset[0]
+
+    if (name == 'citeseer'):
+        dataset = Planetoid(root='/tmp/Citeseer', name='Citeseer')
+        data = dataset[0]
     
     return data
 
@@ -71,8 +69,7 @@ def load_testcase(method):
         test_plans = [{'p': 1, 'q': 1}]
 
     if (method == 'node2vec' or method == 'pagerank'):
-        test_plans = [{'p': .25, 'q': .25}, {'p': .25, 'q': .5}, {'p': .25, 'q': .75}]
-        # , {'p': .25, 'q': 1}, {'p': .25, 'q': 2}, {'p': .25, 'q': 4}, {'p': .5, 'q': .25}, {'p': .75, 'q': .25}, {'p': 1, 'q': .25}, {'p': 2, 'q': .25}, {'p': 4, 'q': .25}
+        test_plans = [{'p': .25, 'q': .25}, {'p': .25, 'q': .5}, {'p': .25, 'q': .75}, {'p': .25, 'q': 1}, {'p': .25, 'q': 2}, {'p': .25, 'q': 4}, {'p': .5, 'q': .25}, {'p': .75, 'q': .25}, {'p': 1, 'q': .25}, {'p': 2, 'q': .25}, {'p': 4, 'q': .25}]
     
     return test_plans
 
@@ -98,7 +95,7 @@ def find_maximum(groups):
         },
         'micro_f1_score': {
             'p': groups[max_micro_f1_index]['p'],
-            'q': groups[max_micro_f1_index]['q'],
+            'q': groups[max_micro_f1_index]['q'],  
             'score': groups[max_micro_f1_index]['micro_f1_score']
         },
         'accuracy': {
@@ -110,7 +107,14 @@ def find_maximum(groups):
 
     return max_values
 
-
+def export_result_set(result_set, filepath, file_format='csv'):
+    df = pd.DataFrame(result_set)
+    if file_format.lower() == 'excel':
+        df.to_excel(filepath + '.xlsx', index=False)
+    elif file_format.lower() == 'csv':
+        df.to_csv(filepath + '.csv', index=False)
+    else:
+        print("Unsupported file format. Please choose 'csv' or 'excel'.")
 
 def main(dataset, method, iteration, filename):
     data = load_dataset(dataset)
@@ -126,23 +130,41 @@ def main(dataset, method, iteration, filename):
     groups = {'A': group_a, 'B': group_b, 'C': group_c}
 
     # node_class = {k: v for v, k in enumerate(node_labels_list)}
-
     test_plans = load_testcase(method)
     iter_level = int(iteration)
     task_groups = []
     average_groups = []
+    
+    result_set = {
+        'dataset': [],
+        'technique': [],
+        'dimensions': [],
+        'num_of_walks': [],
+        'walk_length': [],
+        'p': [],
+        'q': [],
+        'macro_f1_score': [],
+        'micro_f1_score': [],
+        'accuracy': []
+    }
+
+    # Node2Vec parameters
+    dimensions = 256  # Size of node embeddings 성능올릴거면 256
+    num_walks = 10  # Number of walks per node
+    walk_length = 10  # Length of each walk
 
     for index in range(len(test_plans)):
         tmp_macro_f1_score = []
         tmp_micro_f1_score = []
         tmp_accuracy = []
 
-        with open(f"../results/{filename}.md", "a") as file:
-            file.write(f'#####################################')
+        with open(f"../results/md/{filename}.md", "a") as file:
+            file.write(f'#####################################\n')
+            file.write(f'\n[## {method} experiments starts ##]\n')
 
         for iter in range(iter_level):
             # Node2Vec embedding
-            embeddings = node_embedding(G, groups, test_plans[index]['p'], test_plans[index]['q'], load_mode(method))
+            embeddings = node_embedding(G, groups, test_plans[index]['p'], test_plans[index]['q'], load_mode(method), dimensions, num_walks, walk_length)
             macro_f1, micro_f1, accuracy = svm_prediction(embeddings, node_labels_list)
             
             tmp_macro_f1_score.append(macro_f1)
@@ -151,12 +173,28 @@ def main(dataset, method, iteration, filename):
 
             task_groups.append({'macro_f1_score': macro_f1, 'micro_f1_score': micro_f1, 'accuracy': accuracy, 'p': test_plans[index]['p'], 'q': test_plans[index]['q']})
 
-            with open(f"../results/{filename}.md", "a") as file:
+            tmp_data = {
+                'dataset': dataset,
+                'technique': method,
+                'dimensions': dimensions,
+                'num_of_walks': num_walks,
+                'walk_length': walk_length,
+                'p': test_plans[index]['p'],
+                'q': test_plans[index]['q'],
+                'macro_f1_score': macro_f1,
+                'micro_f1_score': micro_f1,
+                'accuracy': accuracy
+            }
+
+            for key, value in tmp_data.items():
+                result_set[key].append(value)            
+
+            with open(f"../results/md/{filename}.md", "a") as file:
                 test_result = f"< Trial #{iter} > \nMacro_F1 Score: {macro_f1}\nMicro_F1 Score: {micro_f1}\nAccuracy Score: {accuracy}\n"
                 file.write(f'\n{test_result}')
 
 
-        with open(f"../results/{filename}.md", "a") as file:
+        with open(f"../results/md/{filename}.md", "a") as file:
             # Mean
             average_macro_score = np.mean(tmp_macro_f1_score)
             average_micro_score = np.mean(tmp_micro_f1_score)
@@ -178,14 +216,14 @@ def main(dataset, method, iteration, filename):
             file.write(f"\n[ Variance Score for Task P: {test_plans[index]['p']}, Q: {test_plans[index]['q']} ] \nMacro_F1 Score: {var_macro_score}\nMicro_F1 Score: {var_micro_score}\nAccuracy Score: {var_accuracy}\n")
             file.write(f"\n[ Standard Deviation Score for Task P: {test_plans[index]['p']}, Q: {test_plans[index]['q']} ] \nMacro_F1 Score: {std_macro_score}\nMicro_F1 Score: {std_micro_score}\nAccuracy Score: {std_accuracy}\n#####################################\n\n")
     
-    with open(f"../results/{filename}.md", "a") as file:
+    with open(f"../results/md/{filename}.md", "a") as file:
         task_group_max = find_maximum(task_groups)
         avg_group_max = find_maximum(average_groups)
 
         max_text = f"""\n[ Task that achieves maximum score ]
         Macro_F1 Score: {task_group_max['macro_f1_score']['score']}, p = {task_group_max['macro_f1_score']['p']}, q = {task_group_max['macro_f1_score']['q']}
         Micro_F1 Score: {task_group_max['micro_f1_score']['score']}, p = {task_group_max['micro_f1_score']['p']}, q = {task_group_max['micro_f1_score']['q']}
-        Accuracy Score: {task_group_max['accuracy']['score']}, p = {task_group_max['accuracy']['p']}, q = {task_group_max['accuracy']['q']}\n\n"""
+        Accuracy Score: {task_group_max['accuracy']['score']}, p = {task_group_max['accuracy']['p']}, q = {task_group_max['accuracy']['q']}\n"""
 
         avg_max_text = f"""\n[ Average that achieves maximum score ]
         Macro_F1 Score: {avg_group_max['macro_f1_score']['score']}, p = {avg_group_max['macro_f1_score']['p']}, q = {avg_group_max['macro_f1_score']['q']}
@@ -196,8 +234,12 @@ def main(dataset, method, iteration, filename):
         max_text = '\n'.join([line.lstrip() for line in max_text.split('\n')])
         avg_max_text = '\n'.join([line.lstrip() for line in avg_max_text.split('\n')])
 
+        file.write(f'[## {method} experiments ends ##]\n')
         file.write(max_text)
         file.write(avg_max_text)
+    
+    export_result_set(result_set, f"../results/csv/{filename}", 'csv')
+    export_result_set(result_set, f"../results/excel/{filename}", 'excel')
 
 
 if __name__ == "__main__":

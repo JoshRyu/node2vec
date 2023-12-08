@@ -94,7 +94,6 @@ class Node2Vec(BaseNodeEmbedder):
 
         # Replace Random Walk Process to "walker" package
         # Noraml Random Walk with Node2Vec parameters
-        print(f"########################{mode}")
         if (mode.casefold() == 'base'):
             self.walks = walker.random_walks(G, n_walks=self.epochs, walk_len=self.walklen, start_nodes=G.nodes(), p=p, q=q)
         else: 
