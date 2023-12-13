@@ -59,6 +59,10 @@ def load_dataset(name):
     if (name == 'citeseer'):
         dataset = Planetoid(root='/tmp/Citeseer', name='Citeseer')
         data = dataset[0]
+
+    if (name == 'pubmed'):
+        dataset = Planetoid(root='/tmp/PubMed', name='PubMed')
+        data = dataset[0]
     
     return data
 
@@ -66,12 +70,11 @@ def load_testcase(method):
     method = method.casefold()
     test_plans = []
 
-    if (method == 'deepwalk'):
+    if (method == 'deepwalk' or method == 'pagerank'):
         test_plans = [{'p': 1, 'q': 1}]
 
-    if (method == 'node2vec' or method == 'pagerank'):
-        test_plans = [{'p': .25, 'q': .25}]
-        # , {'p': .25, 'q': .5}, {'p': .25, 'q': .75}, {'p': .25, 'q': 1}, {'p': .25, 'q': 2}, {'p': .25, 'q': 4}, {'p': .5, 'q': .25}, {'p': .75, 'q': .25}, {'p': 1, 'q': .25}, {'p': 2, 'q': .25}, {'p': 4, 'q': .25}
+    if (method == 'node2vec'):
+        test_plans = [{'p': .25, 'q': .25}, {'p': .25, 'q': .5}, {'p': .25, 'q': .75}, {'p': .25, 'q': 1}, {'p': .25, 'q': 2}, {'p': .25, 'q': 4}, {'p': .5, 'q': .25}, {'p': .75, 'q': .25}, {'p': 1, 'q': .25}, {'p': 2, 'q': .25}, {'p': 4, 'q': .25}]
     
     return test_plans
 
@@ -264,8 +267,8 @@ def main(dataset, method, iteration, filename):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Pagerank Node2Vec Script')
-    parser.add_argument('dataset', choices=['cora', 'citeseer'], help='Dataset name (Cora or CiteSeer)')
-    parser.add_argument('method', choices=['deepwalk', 'node2vec', 'pagerank'], help='Method name (DeepWalk or Node2Vec)')
+    parser.add_argument('dataset', choices=['cora', 'citeseer', 'pubmed'], help='Dataset name (Cora, CiteSeer or PubMed)')
+    parser.add_argument('method', choices=['deepwalk', 'node2vec', 'pagerank'], help='Method name (DeepWalk, Node2Vec or PageRank)')
     parser.add_argument('iteration', type=int, help='Number of iterations')
     parser.add_argument('filename', help='File for results in markdown format (without extension)')
 
