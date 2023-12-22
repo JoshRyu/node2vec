@@ -34,8 +34,8 @@ def node_embedding(G, groups, p, q, mode, dimensions, num_walks, walk_length):
 
     return embeddings
 
-def svm_prediction(embeddings, labels):
-    X_train, X_test, y_train, y_test = train_test_split(embeddings, labels, train_size=0.8, test_size=None, random_state=42)
+def svm_prediction(embeddings, labels, train_size):
+    X_train, X_test, y_train, y_test = train_test_split(embeddings, labels, train_size=float(train_size), test_size=None, random_state=42)
     
     svm_classifier = svm.SVC(kernel = 'rbf', C=8)
     svm_classifier.fit(X_train, y_train)
@@ -48,13 +48,13 @@ def svm_prediction(embeddings, labels):
 
     return macro_f1, micro_f1, accuracy
 
-def svm_prediction_for_periphery(embeddings, labels, group_indices):
+def svm_prediction_for_periphery(embeddings, labels, group_indices, train_size):
     # Filter embeddings and labels for the specific group
     group_embeddings = [embeddings[index] for index in group_indices]
     group_labels = [labels[index] for index in group_indices]
 
     # Split the data
-    X_train, X_test, y_train, y_test = train_test_split(group_embeddings, group_labels, train_size=0.8, test_size=None, random_state=42)
+    X_train, X_test, y_train, y_test = train_test_split(group_embeddings, group_labels, train_size=float(train_size), test_size=None, random_state=42)
 
     # SVM classifier
     svm_classifier = svm.SVC(kernel='rbf', C=8)
@@ -153,9 +153,8 @@ def format_time(start_time, end_time):
     
     return '{:02d}:{:02d}:{:02d}.{:03d}'.format(hours, minutes, seconds, milliseconds)
     
-def main(dataset, method, iteration, filename):
+def main(dataset, method, iteration, filename, train_size):
     data = load_dataset(dataset)
-
     G = to_networkx(data)
     node_labels_list = data.y.numpy()
 
@@ -169,11 +168,6 @@ def main(dataset, method, iteration, filename):
 
     # Slice the list from the calculated index to the end
     group_d = group_c[non_periphery:]
-
-    print(f'group A: {len(group_a)}')
-    print(f'group B: {len(group_b)}')
-    print(f'group C: {len(group_c)}')
-    print(f'group D: {len(group_d)}')
 
     groups = {'A': group_a, 'B': group_b, 'C': group_c}
 
@@ -226,8 +220,8 @@ def main(dataset, method, iteration, filename):
             # Node2Vec embedding
             embeddings = node_embedding(G, groups, test_plans[index]['p'], test_plans[index]['q'], load_mode(method), dimensions, num_walks, walk_length)
 
-            macro_f1, micro_f1, accuracy = svm_prediction(embeddings, node_labels_list)
-            macro_f1_periphery, micro_f1_periphery, accuracy_periphery = svm_prediction_for_periphery(embeddings, node_labels_list, group_d)
+            macro_f1, micro_f1, accuracy = svm_prediction(embeddings, node_labels_list, train_size)
+            macro_f1_periphery, micro_f1_periphery, accuracy_periphery = svm_prediction_for_periphery(embeddings, node_labels_list, group_d, train_size)
 
             print(f"'macro_f1': {macro_f1}, 'micro_f1': {micro_f1}, 'accuracy': {accuracy} ")
             print(f"\n'macro_f1_periphery': {macro_f1_periphery}, 'micro_f1_periphery': {micro_f1_periphery}, 'accuracy_periphery': {accuracy_periphery} ")
@@ -364,7 +358,8 @@ if __name__ == "__main__":
     parser.add_argument('method', choices=['deepwalk', 'node2vec', 'pagerank'], help='Method name (DeepWalk, Node2Vec or PageRank)')
     parser.add_argument('iteration', type=int, help='Number of iterations')
     parser.add_argument('--filename', help='File for results in markdown format (without extension)', default=None)
+    parser.add_argument('--trainsize', help='Train size for svm prediciton task (default: 0.8)', default=0.8)
 
     args = parser.parse_args()
 
-    main(args.dataset, args.method, args.iteration, args.filename)
+    main(args.dataset, args.method, args.iteration, args.filename, args.trainsize)
